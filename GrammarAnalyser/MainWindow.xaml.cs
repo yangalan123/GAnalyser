@@ -47,14 +47,16 @@ namespace GrammarAnalyser
                     this.attribute = attribute;
                 }
             }
-            List<List<myitem>> Rules = new List<List<myitem>>();
+            List<List<myitem>> Rules = new List<List<myitem>>();  //Remove ::=
             Dictionary<String, HashSet<String>> FIRSTVT = new Dictionary<string, HashSet<string>>(), LASTVT = new Dictionary<string, HashSet<string>>();
             List<myitem> stack = new List<myitem>();
             Dictionary<string, string> SymbolTable = new Dictionary<string, string>();
+            List<Tuple<List<myitem>, int>> History = new List<Tuple<List<myitem>, int>>();
             String sourcetext="";
             Dictionary<Tuple<String, String>, int> Matrix = new Dictionary<Tuple<string, string>, int>();
-            //0-<,1->,not exist-unknown
+            //0 - <,1 - >,2 - =,not exist-unknown
             String[] buf = null;
+            String[] sentence = null;
             public string error_msg = "";
             public int error_status = 0;
             //List<List<Boolean>> stringmask = new List<List<Boolean>>();
@@ -152,14 +154,14 @@ namespace GrammarAnalyser
                 {
                     if (list.Count>=2)
                     {
-                        if (list[1].attribute=="VT")
+                        if (list[1].attribute.Equals("VT"))
                         {
                             firstvt_insert(list[0].content, list[1].content);
                         }
                     }
                     if (list.Count>=3)
                     {
-                        if (list[2].attribute == "VT" && list[1].attribute == "VN")
+                        if (list[2].attribute.Equals("VT") && list[1].attribute.Equals("VN"))
                             firstvt_insert(list[0].content, list[2].content);
                     }
                 }
@@ -190,14 +192,14 @@ namespace GrammarAnalyser
                     int list_count = list.Count;
                     if (list.Count >= 2)
                     {
-                        if (list[list_count-1].attribute == "VT")
+                        if (list[list_count-1].attribute.Equals("VT"))
                         {
                             lastvt_insert(list[0].content, list[list_count-1].content);
                         }
                     }
                     if (list.Count >= 3)
                     {
-                        if (list[list_count-2].attribute == "VT" && list[list_count-1].attribute == "VN")
+                        if (list[list_count-2].attribute.Equals("VT") && list[list_count-1].attribute.Equals("VN"))
                             lastvt_insert(list[0].content, list[list_count-2].content);
                     }
                 }
@@ -231,8 +233,7 @@ namespace GrammarAnalyser
                         for (int i=2;i<length;i++)
                         {
                             //
-                          
-                            if (list[i].attribute=="VN" && list[i-1].attribute=="VT")
+                            if (list[i].attribute.Equals("VN") && list[i-1].attribute.Equals("VT"))
                             {
                                 foreach (var item in FIRSTVT[list[i].content])
                                 {
@@ -255,7 +256,7 @@ namespace GrammarAnalyser
                                     }
                                 }
                             }
-                            else if (list[i].attribute == "VT" && list[i - 1].attribute == "VN")
+                            else if (list[i].attribute.Equals("VT") && list[i - 1].attribute.Equals("VN"))
                             {
                                 foreach (var item in LASTVT[list[i-1].content])
                                 {
@@ -278,11 +279,198 @@ namespace GrammarAnalyser
                                     }
                                 }
                             }
+                            else if (list[i].attribute.Equals("VT") && list[i-1].attribute.Equals("VT"))
+                            {
+                                var now_item = new Tuple<String, String>(list[i - 1].content, list[i].content);
+                                if (Matrix.ContainsKey(now_item))
+                                {
+                                    if (Matrix[now_item] == 2)
+                                        continue;
+                                    else
+                                    {
+                                        error_msg = "Not an OG: Conflict Priority Order Over" + now_item.Item1 + " and " + now_item.Item2;
+                                        error_status = -1;
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    Matrix.Add(now_item, 2);
+                                }
+                            }
+                            if (i+1<length)
+                            {
+                                if (list[i-1].attribute.Equals("VT") && list[i].attribute.Equals("VN") && list[i+1].attribute.Equals("VT"))
+                                {
+                                    var now_item = new Tuple<String, String>(list[i - 1].content, list[i+1].content);
+                                    if (Matrix.ContainsKey(now_item))
+                                    {
+                                        if (Matrix[now_item] == 2)
+                                            continue;
+                                        else
+                                        {
+                                            error_msg = "Not an OG: Conflict Priority Order Over" + now_item.Item1 + " and " + now_item.Item2;
+                                            error_status = -1;
+                                            break;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Matrix.Add(now_item, 2);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+                foreach (var item in SymbolTable)
+                {
+                    if (item.Value.Equals("VT"))
+                    {
+                        Matrix.Add(new Tuple<string, string>("#",item.Value),0);
+                        Matrix.Add(new Tuple<string, string>(item.Value,"#"), 1);
+                    }
+                }
+                Matrix.Add(new Tuple<string, string>("#","#"),2);
             }
-            private void
+            private int search(List<myitem> stack_tmp,String symbol)
+            { 
+                int length = stack_tmp.Count;
+                for (int i=length-1;i>=0;i--)
+                {
+                    if (stack_tmp[i].attribute.Equals("VN"))
+                        continue;
+                    var now_item = new Tuple<String, String>(stack_tmp[i].content, symbol);
+                    if (!Matrix.ContainsKey(now_item))
+                        return -1;
+                    if (Matrix[now_item] == 0)
+                        return i;
+                }
+                return -1;
+            }
+            private int search_vt(List<myitem> stack_tmp)
+            {
+
+                int count = stack_tmp.Count;
+                for (int i =count-1;i>=0;i--)
+                {
+                    if (stack_tmp[i].attribute.Equals("VT"))
+                        return i;
+                }
+                return -1;
+            }
+            private List<List<myitem>>getAllCandidate(List<myitem> pattern,List<myitem> source)
+            {
+                List<myitem> buf = new List<myitem>();
+                List<List<myitem>> res = new List<List<myitem>>();
+                int match_len = pattern.Count;
+                HashSet<myitem> set = new HashSet<myitem>();
+                foreach (var item in Rules)
+                {
+                    int length0 = item.Count;
+                    if (length0 - 1 != match_len) continue;
+                    bool flag = true;
+                    for (int index=0;index<match_len;index++)
+                    {
+                         if (!(item[1+index].content.Equals(pattern[index].content) && item[1+index].attribute.Equals(pattern[index].attribute)))
+                         {
+                            flag = false;
+                            break;
+                        }
+                    }
+                    if (flag)
+                    {
+                        buf.Add(item[0]);
+                        set.Add(item[0]);
+                        var new_stack = new List<myitem>(source);
+                        new_stack.Add(item[0]);
+                        res.Add(new_stack);
+                    }
+                }
+                int i = 0;
+                while (i<buf.Count)
+                {
+                    foreach(var item in Rules)
+                    {
+                        if (set.Contains(item[0]))
+                            continue;
+                        if (item.Count != 2) continue;
+                        else
+                        if (item[1].content==buf[i].content && item[1].attribute==buf[i].attribute)
+                        {
+                            buf.Add(item[0]);
+                            set.Add(item[0]);
+                            var new_stack = new List<myitem>(source);
+                            new_stack.Add(item[0]);
+                            res.Add(new_stack);
+                        }
+                    }
+                    i++;
+                }
+                return res;
+            }
+            private int work()
+            {
+                int count = History.Count();
+                var last_status = History[count];
+                int nowvt = search_vt(last_status.Item1);
+                if (nowvt < 0) return -1;
+                string nowsymbol = this.sentence[last_status.Item2];
+                string stacksymbol = last_status.Item1[nowvt].content;
+                if (!SymbolTable.ContainsKey(nowsymbol)) return -1;
+                if (!SymbolTable[nowsymbol].Equals("VT")) return -1;
+                var now_item = new Tuple<String, String>(stacksymbol, nowsymbol);
+                if (!Matrix.ContainsKey(now_item)) return -1;
+                if (Matrix[now_item]==0)
+                {
+                    var stack_tmp = new List<myitem>(last_status.Item1);
+                    stack_tmp.Add(new myitem(nowsymbol, SymbolTable[nowsymbol]));
+                    History.Add(new Tuple<List<myitem>, int>(stack_tmp, last_status.Item2 + 1));
+                    int res = work();
+                    if (res < 0)
+                    {
+                        int length = History.Count();
+                        History.RemoveAt(length);
+                    }
+                    else return 0;
+                }
+                else
+                {
+                    int reduce_position = search(last_status.Item1,nowsymbol);
+                    if (reduce_position < 0) return -1;
+                    int length = last_status.Item1.Count;
+                    List<myitem> pattern = new List<myitem>();
+                    List<myitem> source = new List<myitem>();
+                    for (int i = 0; i <= reduce_position; i++)
+                        source.Add(last_status.Item1[i]);
+                    for (int i=reduce_position+1;i<length;i++)
+                    {
+                        pattern.Add(last_status.Item1[i]);
+                    }
+                    List<List<myitem>> candidate_status = getAllCandidate(pattern,source);
+                    for (int i=0;i<candidate_status.Count;i++)
+                    {
+                        History.Add(new Tuple<List<myitem>, int>(candidate_status[i], nowvt));
+                        int res = work();
+                        if (res < 0)
+                        {
+                            int tmp = History.Count;
+                            History.RemoveAt(tmp);
+                        }
+                        else return 0;
+                    }
+                }
+                return -1;
+            }
+            private int analysis(string sentence)
+            {
+                var stack_tmp = new List<myitem>();
+                stack_tmp.Add(new myitem("#","VT"));
+                History.Add(new Tuple<List<myitem>, int>(stack_tmp, 0));
+                this.sentence = sentence.Split(' ');
+                int res = work();
+                return res;
+            }
             private void clean_work()
             {
                 Rules.Clear();
@@ -296,6 +484,7 @@ namespace GrammarAnalyser
                 Matrix.Clear();
                 error_msg = "";
                 error_status = 0;
+                History.Clear();
             }
         }
         private void InputButton_Click(object sender, RoutedEventArgs e)
