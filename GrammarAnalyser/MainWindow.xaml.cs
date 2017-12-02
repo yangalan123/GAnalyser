@@ -48,6 +48,7 @@ namespace GrammarAnalyser
                 }
             }
             List<List<myitem>> Rules = new List<List<myitem>>();  //Remove ::=
+            Dictionary<String, List<String>> Rules_mapping = new Dictionary<string, List<string>>();
             Dictionary<String, HashSet<String>> FIRSTVT = new Dictionary<string, HashSet<string>>(), LASTVT = new Dictionary<string, HashSet<string>>();
             List<myitem> stack = new List<myitem>();
             Dictionary<string, string> SymbolTable = new Dictionary<string, string>();
@@ -80,15 +81,140 @@ namespace GrammarAnalyser
             }
             private void segmentSource()
             {
-                buf = sourcetext.Split('\n');
+                buf = sourcetext.Split("\r\n".ToCharArray(),StringSplitOptions.RemoveEmptyEntries);
             }
-            public List<List<String>> parse(String text)
+            private Boolean rules_converge()
+            {
+                foreach(var item in buf)
+                {
+                    var tmp = item.Split(' ');
+                    if (!tmp[1].Equals("::="))
+                        return false;
+                    int length = tmp.Length;
+                    if (!Rules_mapping.ContainsKey(tmp[0]))
+                        Rules_mapping.Add(tmp[0], new List<string>());
+                    for (int index = 2;index<length;index++)
+                    {
+                        Rules_mapping[tmp[0]].Add(tmp[index]);
+                    }
+                    Rules_mapping[tmp[0]].Add("|");
+                }
+                return true;
+            }
+            public String parse(String text)
             {
                 sourcetext = text.ToString();
                 segmentSource();
                 find_all_vn_and_build_sym_table(); //also build rules
-                clean_work();
-                return null;
+                find_first_vt();
+                find_last_vt();
+                build_matrix();
+                Boolean flag = rules_converge();
+                if (!flag)
+                    return "Not an OG!";
+                StringBuilder sb = new StringBuilder();
+                sb.Append("VT集\n");
+                foreach(var item in SymbolTable)
+                {
+                    if (item.Value.Equals("VT"))
+                        sb.Append(item.Key+" ");
+                }
+                sb.Append("\n");
+                sb.Append("产生式\n");
+                foreach(var item in SymbolTable)
+                {
+                    if (item.Value.Equals("VT"))
+                        continue;
+                    sb.Append(item.Key + "::= ");
+                    int length = Rules_mapping[item.Key].Count;
+                    for (int index = 0;index<length-1;index++)
+                    {
+                        sb.Append(Rules_mapping[item.Key][index]+" ");
+                    }
+                    sb.Append("\n");
+                }
+                sb.Append("FIRSTVT\n");
+                foreach(var item in FIRSTVT)
+                {
+                    sb.Append(item.Key + ":");
+                    foreach(var item2 in item.Value)
+                    {
+                        sb.Append(item2 + " ");
+                    }
+                    sb.Append("\n");
+                }
+                sb.Append("LASTVT\n");
+                foreach (var item in LASTVT)
+                {
+                    sb.Append(item.Key + ":");
+                    foreach (var item2 in item.Value)
+                    {
+                        sb.Append(item2 + " ");
+                    }
+                    sb.Append("\n");
+                }
+                sb.Append("算符优先关系表\n");
+                for (int i = 0; i < 10; i++)
+                    sb.Append(" ");
+                sb.Append("|");
+                var vts = new List<String>();
+               // var vns = new List<String>();
+                foreach (var item in SymbolTable)
+                {
+                    if (item.Value.Equals("VT"))
+                    { vts.Add(item.Key);
+                        sb.Append(item.Key);
+                        int len = item.Key.Length;
+                        while (len<10)
+                        {
+                            sb.Append(" ");
+                            len++;
+                        }
+                        sb.Append("|");
+                    }
+                    //else
+                      //  vns.Add(item.Key);
+                }
+                vts.Add("#");
+                sb.Append("#\n");
+                foreach(var item in vts)
+                {
+                    sb.Append(item);
+                    int len = item.Length;
+                    while (len < 10)
+                    {
+                        sb.Append(" ");
+                        len++;
+                    }
+                    sb.Append("|");
+                    foreach (var item2 in vts)
+                    {
+                        var now_item = new Tuple<string, string>(item, item2);
+                        if (Matrix.ContainsKey(now_item))
+                        {
+                            if (Matrix[now_item] == 0)
+                                sb.Append("<");
+                            else if (Matrix[now_item] == 1)
+                                sb.Append(">");
+                            else if (Matrix[now_item] == 2)
+                                sb.Append("=");
+                        }
+                        else
+                            sb.Append(" ");
+                        int len2 = 1;
+                        while (len2 < 10)
+                        {
+                            sb.Append(" ");
+                            len2++;
+                        }
+                        sb.Append("|");
+                    }
+                    sb.Append("\n");
+                }
+
+
+                // clean_work();
+                return sb.ToString();
             }
             private List<int> AllIndexesOf(string str, string value)
             {
@@ -169,19 +295,20 @@ namespace GrammarAnalyser
                 {
                     int stack_count = stack.Count;
                     myitem now = stack[stack_count - 1];
+                    stack.RemoveAt(stack_count - 1);
                     string V = now.content;
                     string b = now.attribute;
                     foreach (var list in Rules)
                     {
                         if (list.Count>=2)
                         {
-                            if (list[1].content.Equals(V))
+                            if (list[1].content.Equals(V) && !FIRSTVT[list[0].content].Contains(b))
                             {
                                 firstvt_insert(list[0].content, b);
                             }
                         }
                     }
-                    stack.RemoveAt(stack_count - 1);
+                    
 
                 }
             }
@@ -207,19 +334,20 @@ namespace GrammarAnalyser
                 {
                     int stack_count = stack.Count;
                     myitem now = stack[stack_count - 1];
+                    stack.RemoveAt(stack_count - 1);
                     string V = now.content;
                     string b = now.attribute;
                     foreach (var list in Rules)
                     {
                         if (list.Count >= 2)
                         {
-                            if (list[list.Count-1].content.Equals(V))
+                            if (list[list.Count-1].content.Equals(V) &&!LASTVT[list[0].content].Contains(b))
                             {
                                 lastvt_insert(list[0].content, b);
                             }
                         }
                     }
-                    stack.RemoveAt(stack_count - 1);
+                    
 
                 }
             }
@@ -327,8 +455,8 @@ namespace GrammarAnalyser
                 {
                     if (item.Value.Equals("VT"))
                     {
-                        Matrix.Add(new Tuple<string, string>("#",item.Value),0);
-                        Matrix.Add(new Tuple<string, string>(item.Value,"#"), 1);
+                        Matrix.Add(new Tuple<string, string>("#",item.Key),0);
+                        Matrix.Add(new Tuple<string, string>(item.Key,"#"), 1);
                     }
                 }
                 Matrix.Add(new Tuple<string, string>("#","#"),2);
@@ -413,6 +541,8 @@ namespace GrammarAnalyser
             {
                 int count = History.Count();
                 var last_status = History[count];
+                if (last_status.Item2 >= this.sentence.Length)
+                    return 0;
                 int nowvt = search_vt(last_status.Item1);
                 if (nowvt < 0) return -1;
                 string nowsymbol = this.sentence[last_status.Item2];
@@ -485,6 +615,7 @@ namespace GrammarAnalyser
                 error_msg = "";
                 error_status = 0;
                 History.Clear();
+                Rules_mapping.Clear();
             }
         }
         private void InputButton_Click(object sender, RoutedEventArgs e)
@@ -535,8 +666,8 @@ namespace GrammarAnalyser
             }
             else
                 text = File.ReadAllText(InputFileName);
-            List<List<string>> result = this.parser.parse(text);
-            File.WriteAllText(OutputFileName, output(result));
+            String result = this.parser.parse(text);
+            File.WriteAllText(OutputFileName, result);
             Process.Start("explorer.exe", @outputdir);
         }
     }
