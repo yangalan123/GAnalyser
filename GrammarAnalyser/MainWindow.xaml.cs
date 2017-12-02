@@ -53,13 +53,16 @@ namespace GrammarAnalyser
             List<myitem> stack = new List<myitem>();
             Dictionary<string, string> SymbolTable = new Dictionary<string, string>();
             List<Tuple<List<myitem>, int>> History = new List<Tuple<List<myitem>, int>>();
+            List<String> commands = new List<string>();
             String sourcetext="";
             Dictionary<Tuple<String, String>, int> Matrix = new Dictionary<Tuple<string, string>, int>();
             //0 - <,1 - >,2 - =,not exist-unknown
             String[] buf = null;
             String[] sentence = null;
+            String original = "";
             public string error_msg = "";
             public int error_status = 0;
+
             //List<List<Boolean>> stringmask = new List<List<Boolean>>();
             private void firstvt_insert(String VN,String VT)
             {
@@ -82,6 +85,7 @@ namespace GrammarAnalyser
             private void segmentSource()
             {
                 buf = sourcetext.Split("\r\n".ToCharArray(),StringSplitOptions.RemoveEmptyEntries);
+                
             }
             private Boolean rules_converge()
             {
@@ -232,6 +236,7 @@ namespace GrammarAnalyser
             private void find_all_vn_and_build_sym_table()
             {
                 //int line = 0,col = 0;
+                bool flag = false;
                 foreach(String e in buf)
                 {
                     List<myitem> now = new List<myitem>();
@@ -239,6 +244,11 @@ namespace GrammarAnalyser
                     //string s = e.Substring(0, position);
                     String[] strbuf = e.Split(' ');
                     string s = strbuf[0];
+                    if (!flag)
+                    {
+                        original = new string(s.ToCharArray());
+                        flag = true;
+                    }
                     SymbolTable[s] = "VN";
                     now.Add(new myitem(s,"VN"));
                     Rules.Add(now);
@@ -476,6 +486,21 @@ namespace GrammarAnalyser
                 }
                 return -1;
             }
+            private int search(List<myitem> stack_tmp, String symbol,int limit)
+            {
+                int length = stack_tmp.Count;
+                for (int i = limit-1; i >= 0; i--)
+                {
+                    if (stack_tmp[i].attribute.Equals("VN"))
+                        continue;
+                    var now_item = new Tuple<String, String>(stack_tmp[i].content, symbol);
+                    if (!Matrix.ContainsKey(now_item))
+                        return -1;
+                    if (Matrix[now_item] != 0)
+                        return i;
+                }
+                return -1;
+            }
             private int search_vt(List<myitem> stack_tmp)
             {
 
@@ -540,68 +565,120 @@ namespace GrammarAnalyser
             private int work()
             {
                 int count = History.Count();
-                var last_status = History[count];
-                if (last_status.Item2 >= this.sentence.Length)
+                var last_status = History[count-1];
+                if (last_status.Item1.Count == 2 && last_status.Item1[1].content.Equals(original))
+                    if (last_status.Item2 == this.sentence.Length-1)
                     return 0;
+                if (last_status.Item2 >= this.sentence.Length)
+                    return -1;
                 int nowvt = search_vt(last_status.Item1);
                 if (nowvt < 0) return -1;
                 string nowsymbol = this.sentence[last_status.Item2];
                 string stacksymbol = last_status.Item1[nowvt].content;
-                if (!SymbolTable.ContainsKey(nowsymbol)) return -1;
-                if (!SymbolTable[nowsymbol].Equals("VT")) return -1;
+                if (nowsymbol != "#")
+                {
+                    if (!SymbolTable.ContainsKey(nowsymbol)) return -1;
+                    if (!SymbolTable[nowsymbol].Equals("VT")) return -1;
+                }
                 var now_item = new Tuple<String, String>(stacksymbol, nowsymbol);
                 if (!Matrix.ContainsKey(now_item)) return -1;
-                if (Matrix[now_item]==0)
+                if (Matrix[now_item] == 0)
                 {
                     var stack_tmp = new List<myitem>(last_status.Item1);
                     stack_tmp.Add(new myitem(nowsymbol, SymbolTable[nowsymbol]));
                     History.Add(new Tuple<List<myitem>, int>(stack_tmp, last_status.Item2 + 1));
+                    commands.Add("< Shift");
                     int res = work();
                     if (res < 0)
                     {
                         int length = History.Count();
-                        History.RemoveAt(length);
+                        History.RemoveAt(length - 1);
+                        commands.RemoveAt(length - 1);
                     }
                     else return 0;
                 }
                 else
                 {
-                    int reduce_position = search(last_status.Item1,nowsymbol);
-                    if (reduce_position < 0) return -1;
-                    int length = last_status.Item1.Count;
-                    List<myitem> pattern = new List<myitem>();
-                    List<myitem> source = new List<myitem>();
-                    for (int i = 0; i <= reduce_position; i++)
-                        source.Add(last_status.Item1[i]);
-                    for (int i=reduce_position+1;i<length;i++)
+                    int flag = Matrix[now_item];
+                    int reduce_position = last_status.Item1.Count;
+                    while (reduce_position >= 0)
                     {
-                        pattern.Add(last_status.Item1[i]);
-                    }
-                    List<List<myitem>> candidate_status = getAllCandidate(pattern,source);
-                    for (int i=0;i<candidate_status.Count;i++)
-                    {
-                        History.Add(new Tuple<List<myitem>, int>(candidate_status[i], nowvt));
-                        int res = work();
-                        if (res < 0)
+                        reduce_position = search(last_status.Item1, nowsymbol, reduce_position);
+                        if (reduce_position < 0) return -1;
+                        int length = last_status.Item1.Count;
+                        List<myitem> pattern = new List<myitem>();
+                        List<myitem> source = new List<myitem>();
+                        for (int i = 0; i < (reduce_position==0?1:reduce_position); i++)
+                            source.Add(last_status.Item1[i]);
+                        for (int i = reduce_position==0?1:reduce_position; i < length; i++)
                         {
-                            int tmp = History.Count;
-                            History.RemoveAt(tmp);
+                            pattern.Add(last_status.Item1[i]);
                         }
-                        else return 0;
+                        List<List<myitem>> candidate_status = getAllCandidate(pattern, source);
+                        for (int i = 0; i < candidate_status.Count; i++)
+                        {
+                            History.Add(new Tuple<List<myitem>, int>(candidate_status[i], last_status.Item2));
+                            if (flag == 1)
+                                commands.Add("> Reduce");
+                            else
+                                commands.Add("= Reduce");
+                            int res = work();
+                            if (res < 0)
+                            {
+                                int tmp = History.Count;
+                                History.RemoveAt(tmp - 1);
+                                commands.RemoveAt(tmp - 1);
+                            }
+                            else return 0;
+                        }
                     }
                 }
                 return -1;
             }
-            private int analysis(string sentence)
+            public int analysis(string sentence)
             {
                 var stack_tmp = new List<myitem>();
                 stack_tmp.Add(new myitem("#","VT"));
+                History.Clear();
                 History.Add(new Tuple<List<myitem>, int>(stack_tmp, 0));
+                commands.Clear();
+                commands.Add("< Shift");
+                sentence = sentence + " #";
                 this.sentence = sentence.Split(' ');
                 int res = work();
                 return res;
             }
-            private void clean_work()
+            public List<List<String>> output()
+            {
+                var res = new List<List<String>>();
+                int count = 0;
+                commands.Add("= Reduce");
+                foreach (var item in History)
+                {
+                    //res.Add(new List<string>());
+                    var tmp = new List<String>();
+                    foreach (var item2 in item.Item1)
+                    {
+                        tmp.Add(item2.content);
+                    }
+                    tmp.Add("\r\n");
+                    tmp.Add(sentence[item.Item2]);
+                    tmp.Add("\r\n");
+                    for (int index = item.Item2+1;index<sentence.Length;index++)
+                    {
+                        tmp.Add(sentence[index]);
+                    }
+                    tmp.Add("\r\n");
+                    tmp.Add(commands[count+1].Split(' ')[0]);
+                    tmp.Add("\r\n");
+                    tmp.Add(commands[count+1].Split(' ')[1]);
+                    tmp.Add("\r\n");
+                    count++;
+                    res.Add(tmp);
+                }
+                return res;
+            }
+            public void clean_work()
             {
                 Rules.Clear();
                 FIRSTVT.Clear();
@@ -648,6 +725,16 @@ namespace GrammarAnalyser
             }
         }
 
+        private string zero_padding(string s,int num)
+        {
+            int len = s.Length;
+            StringBuilder sb = new StringBuilder(s);
+            while (sb.Length<num)
+            {
+                sb.Append(" ");
+            }
+            return sb.ToString();
+        }
         private void Run_Click(object sender, RoutedEventArgs e)
         {
             InputFileName = this.InputFileDest.Text;
@@ -666,9 +753,66 @@ namespace GrammarAnalyser
             }
             else
                 text = File.ReadAllText(InputFileName);
-            String result = this.parser.parse(text);
-            File.WriteAllText(OutputFileName, result);
-            Process.Start("explorer.exe", @outputdir);
+            try
+            {
+                var grammar = text;
+                // var sentence_buf = text.Split("\r\n\r\n".ToCharArray(), StringSplitOptions.RemoveEmptyEntries)[1];
+                var sentence_buf = "i + i";
+                String result = this.parser.parse(grammar);
+                File.WriteAllText(OutputFileName, result);
+                var sentences = sentence_buf.Split("\r\n".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
+                StringBuilder sb = new StringBuilder(result);
+                sb.Append("句子分析\n");
+                int count = 0;
+                int[] types = { 10, 30, 10, 30, 10, 10 };
+                foreach (var item in sentences)
+                {
+                    sb.Append(count.ToString() + " " + item+"\n");
+                    sb.Append(zero_padding("序号",types[0]-2)+"|"+zero_padding("栈", types[1]-2) +"|"+zero_padding("现在字符", types[2]-4) +"|"+zero_padding("剩余字符", types[3]-4) +"|"+zero_padding("大小关系", types[4]-4) +"|"+zero_padding("动作", types[5]-4) +"\n");
+                    var flag = this.parser.analysis(item);
+                    if (flag < 0)
+                        sb.Append("Failure at sentence:" + item + "\n");
+                    else
+                    {
+                        var output = this.parser.output();
+                        int index = 0;
+                        while (index < output.Count)
+                        {
+                            int index2 = 0;
+                            StringBuilder tmp = new StringBuilder();
+                            sb.Append(zero_padding(index.ToString(),types[0]));
+                            int type = 1;
+                            while (index2 < output[index].Count)
+                            {
+                                if (output[index][index2].Equals("\r\n"))
+                                {
+                                    sb.Append(zero_padding(tmp.ToString(), types[type])+"|");
+                                    tmp.Clear();
+                                    type += 1;
+                                }
+                                else
+                                {
+                                    tmp.Append(output[index][index2]);
+                                }
+                                index2++;
+                            }
+                            sb.Append("\n");
+                            index++;
+                        }
+                    }
+                }
+                File.WriteAllText(OutputFileName, sb.ToString());
+                Process.Start("explorer.exe", @outputdir);
+                this.parser.clean_work();
+            }
+            catch(Exception ex)
+            {
+                System.Windows.Forms.MessageBox.Show("输入格式有误!\n"+ex.StackTrace, "警告！", MessageBoxButtons.OK);
+                return;
+            }
+            
         }
+
+       
     }
 }
