@@ -100,6 +100,9 @@ namespace GrammarAnalyser
                     for (int index = 2;index<length;index++)
                     {
                         Rules_mapping[tmp[0]].Add(tmp[index]);
+                        if (index > 2)
+                            if (SymbolTable[tmp[index]].Equals("VN") && SymbolTable[tmp[index - 1]].Equals("VN"))
+                                return false;
                     }
                     Rules_mapping[tmp[0]].Add("|");
                 }
@@ -110,12 +113,18 @@ namespace GrammarAnalyser
                 sourcetext = text.ToString();
                 segmentSource();
                 find_all_vn_and_build_sym_table(); //also build rules
+                //check_OG_rules();
+                if (error_status == -1)
+                    return error_msg;
+                Boolean flag = rules_converge();
+                if (!flag)
+                    return "Not an OG!\n";
                 find_first_vt();
                 find_last_vt();
                 build_matrix();
-                Boolean flag = rules_converge();
-                if (!flag)
-                    return "Not an OG!";
+                if (error_status == -1)
+                    return error_msg;
+                
                 StringBuilder sb = new StringBuilder();
                 sb.Append("VT集\n");
                 foreach(var item in SymbolTable)
@@ -165,7 +174,7 @@ namespace GrammarAnalyser
                // var vns = new List<String>();
                 foreach (var item in SymbolTable)
                 {
-                    if (item.Value.Equals("VT"))
+                    if (item.Value.Equals("VT") && !item.Key.Equals("#"))
                     { vts.Add(item.Key);
                         sb.Append(item.Key);
                         int len = item.Key.Length;
@@ -179,8 +188,8 @@ namespace GrammarAnalyser
                     //else
                       //  vns.Add(item.Key);
                 }
-                vts.Add("#");
-                sb.Append("#\n");
+                //vts.Add("#");
+                sb.Append("\n");
                 foreach(var item in vts)
                 {
                     sb.Append(item);
@@ -382,7 +391,7 @@ namespace GrammarAnalyser
                                             continue;
                                         else
                                         {
-                                            error_msg = "Not an OG: Conflict Priority Order Over" + now_item.Item1 + " and " + now_item.Item2;
+                                            error_msg = "Not an OPG: Conflict Priority Order Over" + now_item.Item1 + " and " + now_item.Item2;
                                             error_status = -1;
                                             break;
                                         }
@@ -405,7 +414,7 @@ namespace GrammarAnalyser
                                             continue;
                                         else
                                         {
-                                            error_msg = "Not an OG: Conflict Priority Order Over" + now_item.Item1 + " and " + now_item.Item2;
+                                            error_msg = "Not an OPG: Conflict Priority Order Over" + now_item.Item1 + " and " + now_item.Item2;
                                             error_status = -1;
                                             break;
                                         }
@@ -426,7 +435,7 @@ namespace GrammarAnalyser
                                         continue;
                                     else
                                     {
-                                        error_msg = "Not an OG: Conflict Priority Order Over" + now_item.Item1 + " and " + now_item.Item2;
+                                        error_msg = "Not an OPG: Conflict Priority Order Over" + now_item.Item1 + " and " + now_item.Item2;
                                         error_status = -1;
                                         break;
                                     }
@@ -447,7 +456,7 @@ namespace GrammarAnalyser
                                             continue;
                                         else
                                         {
-                                            error_msg = "Not an OG: Conflict Priority Order Over" + now_item.Item1 + " and " + now_item.Item2;
+                                            error_msg = "Not an OPG: Conflict Priority Order Over" + now_item.Item1 + " and " + now_item.Item2;
                                             error_status = -1;
                                             break;
                                         }
@@ -469,35 +478,39 @@ namespace GrammarAnalyser
                         Matrix.Add(new Tuple<string, string>(item.Key,"#"), 1);
                     }
                 }
-                Matrix.Add(new Tuple<string, string>("#","#"),2);
+                Matrix.Add(new Tuple<string, string>("#","#"),1);
             }
             private int search(List<myitem> stack_tmp,String symbol)
             { 
                 int length = stack_tmp.Count;
+                string symbol_tmp = symbol;
                 for (int i=length-1;i>=0;i--)
                 {
                     if (stack_tmp[i].attribute.Equals("VN"))
                         continue;
-                    var now_item = new Tuple<String, String>(stack_tmp[i].content, symbol);
+                    var now_item = new Tuple<String, String>(stack_tmp[i].content, symbol_tmp);
                     if (!Matrix.ContainsKey(now_item))
                         return -1;
                     if (Matrix[now_item] == 0)
-                        return i;
+                        return i+1;
+                    symbol_tmp = stack_tmp[i].content;
                 }
                 return -1;
             }
             private int search(List<myitem> stack_tmp, String symbol,int limit)
             {
                 int length = stack_tmp.Count;
+                string symbol_tmp = symbol;
                 for (int i = limit-1; i >= 0; i--)
                 {
                     if (stack_tmp[i].attribute.Equals("VN"))
                         continue;
-                    var now_item = new Tuple<String, String>(stack_tmp[i].content, symbol);
+                    var now_item = new Tuple<String, String>(stack_tmp[i].content, symbol_tmp);
                     if (!Matrix.ContainsKey(now_item))
                         return -1;
-                    if (Matrix[now_item] != 0)
-                        return i;
+                    if (Matrix[now_item] == 0)
+                        return i+1;
+                    symbol_tmp = stack_tmp[i].content;
                 }
                 return -1;
             }
@@ -582,10 +595,14 @@ namespace GrammarAnalyser
                 }
                 var now_item = new Tuple<String, String>(stacksymbol, nowsymbol);
                 if (!Matrix.ContainsKey(now_item)) return -1;
-                if (Matrix[now_item] == 0)
+                if (Matrix[now_item] != 1)
                 {
                     var stack_tmp = new List<myitem>(last_status.Item1);
+                    //Console.WriteLine("Shift");
+                    //Console.WriteLine(nowsymbol);
+                    //Console.WriteLine(now_item);
                     stack_tmp.Add(new myitem(nowsymbol, SymbolTable[nowsymbol]));
+               
                     History.Add(new Tuple<List<myitem>, int>(stack_tmp, last_status.Item2 + 1));
                     commands.Add("< Shift");
                     int res = work();
@@ -599,11 +616,15 @@ namespace GrammarAnalyser
                 }
                 else
                 {
+                    //Console.WriteLine("Reduce");
+                    //Console.WriteLine(nowsymbol);
+                    //Console.WriteLine(now_item);
                     int flag = Matrix[now_item];
                     int reduce_position = last_status.Item1.Count;
-                    while (reduce_position >= 0)
+                    //while (reduce_position >= 0)
                     {
                         reduce_position = search(last_status.Item1, nowsymbol, reduce_position);
+                        //Console.WriteLine(reduce_position);
                         if (reduce_position < 0) return -1;
                         int length = last_status.Item1.Count;
                         List<myitem> pattern = new List<myitem>();
@@ -614,7 +635,10 @@ namespace GrammarAnalyser
                         {
                             pattern.Add(last_status.Item1[i]);
                         }
+                        //Console.WriteLine(pattern);
+                        //Console.WriteLine(source);
                         List<List<myitem>> candidate_status = getAllCandidate(pattern, source);
+                        //Console.WriteLine(candidate_status);
                         for (int i = 0; i < candidate_status.Count; i++)
                         {
                             History.Add(new Tuple<List<myitem>, int>(candidate_status[i], last_status.Item2));
@@ -652,7 +676,7 @@ namespace GrammarAnalyser
             {
                 var res = new List<List<String>>();
                 int count = 0;
-                commands.Add("= Reduce");
+                commands.Add("< Reduce");
                 foreach (var item in History)
                 {
                     //res.Add(new List<string>());
@@ -736,7 +760,7 @@ namespace GrammarAnalyser
             return sb.ToString();
         }
         private void Run_Click(object sender, RoutedEventArgs e)
-        {
+         {
             InputFileName = this.InputFileDest.Text;
             OutputFileName = this.OutputFileDest.Text;
             if (OutputFileName.Length == 0)
@@ -745,6 +769,8 @@ namespace GrammarAnalyser
                 return;
             }
             string text = "";
+            this.Pb.Minimum = 0;
+            this.Pb.Value = 0;
             if (this.ModeSelectBox.SelectedIndex == 0)
             {
                 //FileStream inputfile = File.OpenRead(InputFileName);
@@ -755,18 +781,27 @@ namespace GrammarAnalyser
                 text = File.ReadAllText(InputFileName);
             try
             {
-                var grammar = text;
+                var grammar = text.Split("&&&&".ToCharArray(),StringSplitOptions.RemoveEmptyEntries)[0];
                 // var sentence_buf = text.Split("\r\n\r\n".ToCharArray(), StringSplitOptions.RemoveEmptyEntries)[1];
-                var sentence_buf = "i + i";
+                var sentence_buf = text.Split("&&&&".ToCharArray(), StringSplitOptions.RemoveEmptyEntries)[1].Trim("\r\n".ToCharArray());
                 String result = this.parser.parse(grammar);
                 File.WriteAllText(OutputFileName, result);
+                //String warning = "";
+                if (result.Equals("Not an OG!\n") || this.parser.error_status == -1)
+                {
+                    System.Windows.Forms.MessageBox.Show(result, "警告！", MessageBoxButtons.OK);
+                    return;
+                }
+
                 var sentences = sentence_buf.Split("\r\n".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
                 StringBuilder sb = new StringBuilder(result);
                 sb.Append("句子分析\n");
-                int count = 0;
+                int count = -1;
                 int[] types = { 10, 30, 10, 30, 10, 10 };
+                this.Pb.Maximum = sentences.Length;
                 foreach (var item in sentences)
                 {
+                    count += 1;
                     sb.Append(count.ToString() + " " + item+"\n");
                     sb.Append(zero_padding("序号",types[0]-2)+"|"+zero_padding("栈", types[1]-2) +"|"+zero_padding("现在字符", types[2]-4) +"|"+zero_padding("剩余字符", types[3]-4) +"|"+zero_padding("大小关系", types[4]-4) +"|"+zero_padding("动作", types[5]-4) +"\n");
                     var flag = this.parser.analysis(item);
@@ -800,6 +835,8 @@ namespace GrammarAnalyser
                             index++;
                         }
                     }
+                    this.Pb.Value += 1;
+                    
                 }
                 File.WriteAllText(OutputFileName, sb.ToString());
                 Process.Start("explorer.exe", @outputdir);
@@ -807,7 +844,8 @@ namespace GrammarAnalyser
             }
             catch(Exception ex)
             {
-                System.Windows.Forms.MessageBox.Show("输入格式有误!\n"+ex.StackTrace, "警告！", MessageBoxButtons.OK);
+                System.Windows.Forms.MessageBox.Show("输入格式有误!\n"+ex.Message+"\r\n"+ex.Data.ToString()+ex.StackTrace, "警告！", MessageBoxButtons.OK);
+                //throw ex;
                 return;
             }
             

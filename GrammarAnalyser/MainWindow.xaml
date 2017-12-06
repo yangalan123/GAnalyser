@@ -19,12 +19,14 @@
         <TextBox x:Name="OutputFileDest" HorizontalAlignment="Left" Height="60" Margin="373,285,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="190" AcceptsReturn="True" RenderTransformOrigin="0.518,0.214"/>
         <Button x:Name="InputButton" Content="浏览" HorizontalAlignment="Left" VerticalAlignment="Top" Width="101" Margin="411,163,0,0" Click="InputButton_Click" Height="29" RenderTransformOrigin="0.398,0.53"/>
         <Button x:Name="OutputButton" Content="浏览" HorizontalAlignment="Left" VerticalAlignment="Top" Width="101" Margin="411,362,0,0" Click="OutputButton_Click" Height="31"/>
-        <Button x:Name="Run" Content="运行" HorizontalAlignment="Left" VerticalAlignment="Top" Width="101" Margin="246,420,0,0"  Height="31" Click="Run_Click"/>
+        <Button x:Name="Run" Content="运行" HorizontalAlignment="Left" VerticalAlignment="Top" Width="101" Margin="86,411,0,0"  Height="41" Click="Run_Click"/>
         <ComboBox x:Name="ModeSelectBox" HorizontalAlignment="Left" Margin="237,378,0,0" VerticalAlignment="Top" Width="120" SelectedIndex="0">
             <ComboBoxItem Content="文本模式"/>
             <ComboBoxItem Content="文件模式"/>
         </ComboBox>
-        <Label x:Name="Textmode_label_Copy5" Content="文法和句子请用两个回车隔开" HorizontalAlignment="Left" Margin="65,337,0,0" VerticalAlignment="Top" Width="167" Height="38"/>
+        <Label x:Name="Textmode_label_Copy5" Content="文法和句子请用一行四个&amp;隔开" HorizontalAlignment="Left" Margin="51,335,0,0" VerticalAlignment="Top" Width="198" Height="38"/>
+        <ProgressBar HorizontalAlignment="Left" Height="10" VerticalAlignment="Top" Width="100"/>
+        <ProgressBar x:Name="Pb" HorizontalAlignment="Left" Height="22" Margin="237,421,0,0" VerticalAlignment="Top" Width="305"/>
 
     </Grid>
 </Window>
